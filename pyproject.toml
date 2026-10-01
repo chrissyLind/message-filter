@@ -1,0 +1,30 @@
+[project]
+name = "message-filter"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Christine Lindauer", email = "christine.lindauer@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=1.11.0",
+    "fastapi>=0.142.2",
+    "pydantic>=2.13.5",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.32",
+    "twilio>=9.11.2",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+message-filter = "message_filter:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
