@@ -1,7 +1,7 @@
 [project]
 name = "message-filter"
 version = "0.1.0"
-description = "Add your description here"
+description = "Project to filter toxic WhatsApp messages and improve my mental health"
 readme = "README.md"
 authors = [
     { name = "Christine Lindauer", email = "christine.lindauer@gmail.com" }
@@ -26,5 +26,10 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+markers = ["llm: calls the real Claude API (costs money)"]
+addopts = "-m 'not llm'"
