@@ -156,4 +156,4 @@ def test_still_sends_facts_when_drafting_fails(client, filter_needs_reply, monke
     assert response.status_code == 200
     assert response.text.count("<Message>") == 1
     assert "Request to switch weekends" in response.text
-    assert "draft replies this time" in response.text
+    assert "I couldn't draft replies this time" in response.text
