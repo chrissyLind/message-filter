@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from twilio.request_validator import RequestValidator
 
 import message_filter.app as app_module
-from message_filter.models import FilteredMessage
+from message_filter.models import FilteredMessage, ReplyDrafts, ReplyOption
 
 MY_NUMBER = "whatsapp:+15550001111"
 TEST_TOKEN = "test-auth-token"
@@ -30,6 +30,22 @@ def filter_calls(monkeypatch):
 
     monkeypatch.setattr(app_module, "filter_message", fake_filter)
     return calls
+
+
+NEEDS_REPLY = FilteredMessage(
+    facts=["Request to switch weekends"],
+    needs_reply=True,
+    questions=["Can you take Sam on the 17th?"],
+    notes=[],
+)
+
+
+@pytest.fixture
+def filter_needs_reply(monkeypatch):
+    async def fake_filter(text):
+        return NEEDS_REPLY
+
+    monkeypatch.setattr(app_module, "filter_message", fake_filter)
 
 
 def signed_post(client, data):
@@ -92,3 +108,52 @@ def test_never_shows_original_when_filter_fails(client, monkeypatch):
     assert response.status_code == 200
     assert "filter that message" in response.text
     assert "selfish" not in response.text
+
+
+def test_sends_each_draft_as_its_own_message(client, filter_needs_reply, monkeypatch):
+    async def fake_drafts(filtered):
+        return ReplyDrafts(
+            options=[
+                ReplyOption(label="Agree", text="Yes, I can take Sam on the 17th."),
+                ReplyOption(label="Decline", text="I am not able to switch that weekend."),
+            ]
+        )
+
+    monkeypatch.setattr(app_module, "draft_replies", fake_drafts)
+
+    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+
+    assert response.status_code == 200
+    assert response.text.count("<Message>") == 3
+    assert "DRAFT REPLIES (Agree, Decline)" in response.text
+    assert "<Message>Yes, I can take Sam on the 17th.</Message>" in response.text
+    assert "<Message>I am not able to switch that weekend.</Message>" in response.text
+
+
+def test_skips_drafts_when_no_reply_needed(client, filter_calls, monkeypatch):
+    draft_calls = []
+
+    async def fake_drafts(filtered):
+        draft_calls.append(filtered)
+        return ReplyDrafts(options=[])
+
+    monkeypatch.setattr(app_module, "draft_replies", fake_drafts)
+
+    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+
+    assert response.text.count("<Message>") == 1
+    assert draft_calls == []
+
+
+def test_still_sends_facts_when_drafting_fails(client, filter_needs_reply, monkeypatch):
+    async def broken_drafts(filtered):
+        raise RuntimeError("API is down")
+
+    monkeypatch.setattr(app_module, "draft_replies", broken_drafts)
+
+    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+
+    assert response.status_code == 200
+    assert response.text.count("<Message>") == 1
+    assert "Request to switch weekends" in response.text
+    assert "draft replies this time" in response.text
