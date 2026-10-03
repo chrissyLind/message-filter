@@ -1,4 +1,4 @@
-from message_filter.models import FilteredMessage
+from message_filter.models import FilteredMessage, ReplyDrafts
 
 
 def format_for_whatsapp(result: FilteredMessage) -> str:
@@ -23,3 +23,7 @@ def format_for_whatsapp(result: FilteredMessage) -> str:
             lines.append(f"- {note}")
 
     return "\n".join(lines)
+
+def format_drafts_note(drafts: ReplyDrafts) -> str:
+    labels = ", ".join(option.label for option in drafts.options)
+    return f"DRAFT REPLIES ({labels}) follow as separate messages. Copy the one you want to send."

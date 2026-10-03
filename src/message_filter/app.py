@@ -7,7 +7,8 @@ from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
 
 from message_filter.filter import filter_message
-from message_filter.formatting import format_for_whatsapp
+from message_filter.formatting import format_drafts_note, format_for_whatsapp
+from message_filter.reply import draft_replies
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,13 @@ def is_from_twilio(params: dict[str, str], signature: str) -> bool:
         return False
     validator = RequestValidator(TWILIO_AUTH_TOKEN)
     return validator.validate(PUBLIC_WEBHOOK_URL, params, signature)
+
+
+def twiml_response(messages: list[str]) -> Response:
+    reply = MessagingResponse()
+    for text in messages:
+        reply.message(text)
+    return Response(content=str(reply), media_type="application/xml")
 
 
 @app.get("/health")
@@ -44,11 +52,22 @@ async def whatsapp_webhook(request: Request):
 
     try:
         result = await filter_message(params.get("Body", ""))
-        filtered = format_for_whatsapp(result)
+        summary = format_for_whatsapp(result)
     except Exception:
         logger.exception("Filtering failed")
-        filtered = "Sorry, I couldn't filter that message. Please try again in a minute."
+        return twiml_response(
+            ["Sorry, I couldn't filter that message. Please try again in a minute."]
+        )
 
-    reply = MessagingResponse()
-    reply.message(filtered)
-    return Response(content=str(reply), media_type="application/xml")
+    if not result.needs_reply:
+        return twiml_response([summary])
+
+    try:
+        drafts = await draft_replies(result)
+    except Exception:
+        logger.exception("Drafting replies failed")
+        return twiml_response([summary + "\n\nI couldn't draft replies this time."])
+
+    note = format_drafts_note(drafts)
+    draft_texts = [option.text for option in drafts.options]
+    return twiml_response([summary + "\n\n" + note] + draft_texts)

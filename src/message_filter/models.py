@@ -15,3 +15,17 @@ class FilteredMessage(BaseModel):
         description="Anything unclear, and anything flagged such as threats, safety concerns "
         "or legal action. Empty if none."
     )
+
+class ReplyOption(BaseModel):
+    label: str = Field(
+        description="A short label for this option, such as 'Agree', 'Decline' or 'Acknowledge'."
+    )
+    text: str = Field(
+        description="The reply text, ready to send. Three sentences at most."
+    )
+
+
+class ReplyDrafts(BaseModel):
+    options: list[ReplyOption] = Field(
+        description="One to three alternative replies for the recipient to choose from."
+    )
