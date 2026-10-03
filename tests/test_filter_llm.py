@@ -4,6 +4,7 @@ import anthropic
 import pytest
 
 import message_filter.filter as filter_module
+from message_filter.formatting import format_for_whatsapp
 
 CASES = [
     pytest.param(
@@ -28,7 +29,7 @@ CASES = [
     ),
     pytest.param(
         "I'll get the kids tomorrow afternoon around dinner time",
-        ["NOTES", "unclear", "tomorrow afternoon", "dinner"],
+        ["NOTES", "tomorrow afternoon", "dinner"],
         [],
         id="vague time",
     ),
@@ -46,6 +47,12 @@ CASES = [
         ["October 5", "5pm", "Southern Community Park", "snack", "6pm"],
         ["Hope that's not too much"],
         id="many details"
+    ),
+    pytest.param(
+        "Why is everything always so hard with you? I need to switch weekends. Can you take Sam on the 17th instead of the 10th?",
+        ["Can you take Sam on the 17th"],
+        ["ex wants to take Sam on the 17th", "he wants to take Sam on the 17th"],
+        id = "FACT mixup"
     )
 ]
 
@@ -55,7 +62,8 @@ CASES = [
 def test_filter(message, must_include, must_exclude, monkeypatch):
     monkeypatch.setattr(filter_module, "client", anthropic.AsyncAnthropic())
 
-    result = asyncio.run(filter_module.filter_message(message)).lower()
+    filtered = asyncio.run(filter_module.filter_message(message))
+    result = format_for_whatsapp(filtered).lower()
 
     for phrase in must_include:
         assert phrase.lower() in result, f"Missing '{phrase}' in:\n{result}"

@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from twilio.request_validator import RequestValidator
 
 import message_filter.app as app_module
+from message_filter.models import FilteredMessage
 
 MY_NUMBER = "whatsapp:+15550001111"
 TEST_TOKEN = "test-auth-token"
@@ -23,7 +24,9 @@ def filter_calls(monkeypatch):
 
     async def fake_filter(text):
         calls.append(text)
-        return "FACTS:\n- Pickup at 5:30"
+        return FilteredMessage(
+            facts=["Pickup at 5:30"], needs_reply=False, questions=[], notes=[]
+        )
 
     monkeypatch.setattr(app_module, "filter_message", fake_filter)
     return calls

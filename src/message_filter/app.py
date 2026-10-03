@@ -7,6 +7,7 @@ from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
 
 from message_filter.filter import filter_message
+from message_filter.formatting import format_for_whatsapp
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,8 @@ async def whatsapp_webhook(request: Request):
         return Response(status_code=403)
 
     try:
-        filtered = await filter_message(params.get("Body", ""))
+        result = await filter_message(params.get("Body", ""))
+        filtered = format_for_whatsapp(result)
     except Exception:
         logger.exception("Filtering failed")
         filtered = "Sorry, I couldn't filter that message. Please try again in a minute."
