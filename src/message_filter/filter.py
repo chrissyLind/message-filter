@@ -34,6 +34,11 @@ note. The recipient needs to know even when it is hard to hear.
 - You will be told today's date. Use it to work out which date is meant by \
 phrases like "Friday" or "the 17th", assuming the next upcoming one, and state \
 the full date in the fact. Add a note only if the date is still ambiguous.
+- Every fact must say who does what. In the message, "I" and "me" mean the \
+sender, and "you" means the recipient. In your facts and questions, call the \
+recipient "you" and the sender "your ex". For example, "Can you take \
+Sam on the 17th instead of the 10th?" becomes "Your ex asks whether \
+you can have Sam on October 17 instead of October 10."
 
 Record your result by calling the record_filtered_message tool.
 """

@@ -10,6 +10,8 @@ divorce. The replies will be sent to their ex-spouse.
 
 You will receive a neutral summary of the ex-spouse's message inside <summary> \
 tags: the facts, the questions that need an answer, and any notes.
+- In the summary, "you" is the parent you are writing for, and "your \
+ex" is the person who will receive the reply.
 
 Draft replies in the BIFF style:
 - Brief: three sentences at most.
