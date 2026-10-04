@@ -6,6 +6,7 @@ import pytest
 import message_filter.reply as reply_module
 from message_filter.models import FilteredMessage
 import message_filter.llm as llm_module
+from message_filter.llm import SENDER
 
 
 @pytest.mark.llm
@@ -13,7 +14,7 @@ def test_offers_two_or_three_options(monkeypatch):
     monkeypatch.setattr(llm_module, "client", anthropic.AsyncAnthropic())
     summary = FilteredMessage(
         facts=[
-            "Your ex asks whether you can have Sam on October 17, 2026 "
+            f"{SENDER} asks whether you can have Sam on October 17, 2026 "
             "instead of October 10, 2026"
         ],
         needs_reply=True,

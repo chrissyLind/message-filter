@@ -3,6 +3,7 @@ from datetime import date
 import anthropic
 from pydantic import BaseModel
 
+SENDER = "your ex"
 HAIKU = "claude-haiku-4-5-20251001"
 SONNET = "claude-sonnet-5-5"
 
