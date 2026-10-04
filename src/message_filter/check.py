@@ -1,9 +1,9 @@
 from datetime import date
 
-from message_filter.llm import SONNET, ask, format_today
+from message_filter.llm import SONNET, SENDER, ask, format_today
 from message_filter.models import CheckResult, FilteredMessage
 
-SYSTEM_PROMPT = """You check the work of an assistant that summarizes messages \
+SYSTEM_PROMPT = f"""You check the work of an assistant that summarizes messages \
 for a parent going through a high-conflict divorce. The assistant removes \
 hostile content and keeps only the practical information.
 
@@ -19,7 +19,7 @@ wrong date or time, or the wrong person doing something.
 and the summary has no note about it.
 
 How to read the summary:
-- "You" means the recipient of the message, and "your ex" means the sender.
+- "You" means the recipient of the message, and "{SENDER}" means the sender.
 - Dates may be written out in full. That is correct if they match what the \
 message means, given today's date.
 

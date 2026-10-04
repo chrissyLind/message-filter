@@ -7,6 +7,7 @@ import pytest
 import message_filter.filter as filter_module
 from message_filter.formatting import format_for_whatsapp
 import message_filter.llm as llm_module
+from message_filter.llm import SENDER
 
 TEST_DATE = date(2026, 10, 3)
 CASES = [
@@ -32,7 +33,7 @@ CASES = [
     ),
     pytest.param(
         "I'll get the kids tomorrow afternoon around dinner time",
-        ["NOTES", "your ex", "october", "4, 2026", "dinner"],
+        ["NOTES", SENDER, "october", "4, 2026", "dinner"],
         [],
         id="vague time",
     ),
