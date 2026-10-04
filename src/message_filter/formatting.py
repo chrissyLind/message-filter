@@ -1,4 +1,4 @@
-from message_filter.models import FilteredMessage, ReplyDrafts
+from message_filter.models import CheckResult, FilteredMessage, ReplyDrafts
 
 
 def format_for_whatsapp(result: FilteredMessage) -> str:
@@ -27,3 +27,18 @@ def format_for_whatsapp(result: FilteredMessage) -> str:
 def format_drafts_note(drafts: ReplyDrafts) -> str:
     labels = ", ".join(option.label for option in drafts.options)
     return f"DRAFT REPLIES ({labels}) follow as separate messages. Copy the one you want to send."
+
+
+PROBLEM_LABELS = {
+    "unflagged": "Not flagged",
+    "incorrect": "May be wrong",
+    "missing": "May be missing",
+    "hostile": "Hostile wording",
+}
+
+
+def format_problems(check: CheckResult) -> str:
+    lines = ["WARNING: this summary may have problems. Check the original message."]
+    for problem in check.problems:
+        lines.append(f"- {PROBLEM_LABELS[problem.kind]}: {problem.description}")
+    return "\n".join(lines)

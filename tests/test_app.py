@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from twilio.request_validator import RequestValidator
 
 import message_filter.app as app_module
-from message_filter.models import FilteredMessage, ReplyDrafts, ReplyOption
+from message_filter.models import CheckResult, FilteredMessage, ReplyDrafts, ReplyOption
 
 MY_NUMBER = "whatsapp:+15550001111"
 TEST_TOKEN = "test-auth-token"
@@ -17,6 +17,14 @@ def client(monkeypatch):
     monkeypatch.setattr(app_module, "PUBLIC_WEBHOOK_URL", TEST_URL)
     return TestClient(app_module.app)
 
+
+@pytest.fixture(autouse=True)
+def check_finds_nothing(monkeypatch):
+    async def fake_check(text, filtered):
+        return CheckResult(problems=[])
+
+    monkeypatch.setattr(app_module, "check_summary", fake_check)
+    
 
 @pytest.fixture
 def filter_calls(monkeypatch):

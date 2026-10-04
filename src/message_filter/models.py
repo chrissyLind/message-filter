@@ -34,10 +34,12 @@ class ReplyDrafts(BaseModel):
 
 
 class Problem(BaseModel):
-    kind: Literal["missing", "incorrect", "hostile"] = Field(
+    kind: Literal["missing", "incorrect", "hostile", "unflagged"] = Field(
         description="'missing' if the summary left out something practical, "
         "'incorrect' if a fact or question is wrong, "
-        "'hostile' if hostile wording got through."
+        "'hostile' if hostile wording got through, "
+        "'unflagged' if the message mentions threats, safety concerns or legal "
+        "action and the summary has no note about it."
     )
     description: str = Field(
         description="The problem in one neutral sentence. Never quote hostile language."
