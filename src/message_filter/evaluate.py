@@ -1,15 +1,20 @@
 import json
 from datetime import date
 from pathlib import Path
+import asyncio
+import sys
 
 from pydantic import BaseModel, Field
 
 from message_filter.formatting import format_for_whatsapp
 from message_filter.llm import SENDER, SONNET, ask
 from message_filter.models import FilteredMessage
+from message_filter.filter import filter_message
+from message_filter.llm import HAIKU, SENDER, SONNET, ask
 
 CASES_FILE = Path("evals/cases.json")
 EVAL_DATE = date(2026, 10, 3)
+MODELS = {"haiku": HAIKU, "sonnet": SONNET}
 
 
 class EvalCase(BaseModel):
@@ -59,6 +64,8 @@ Rules:
 in a different format is still a match.
 - The lines may contain more than the expected statement. That is fine.
 - If there are no lines, the answer is false.
+- Judge the practical content. Framing does not have to match: "your ex says \
+X should happen" and "X needs to happen" convey the same thing.
 """
 
 
@@ -66,3 +73,92 @@ async def judge(expected: str, lines: list[str]) -> Verdict:
     joined = "\n".join(lines)
     content = f"<expected>\n{expected}\n</expected>\n\n<lines>\n{joined}\n</lines>"
     return await ask(SONNET, JUDGE_PROMPT, content, Verdict)
+
+
+class CaseScore(BaseModel):
+    id: str
+    facts_expected: int
+    flags_expected: int
+    unclear_expected: int
+    missed_facts: list[str]
+    missed_flags: list[str]
+    missed_unclear: list[str]
+    reply_correct: bool
+    leaked: list[str]
+
+
+async def missed(expected: list[str], lines: list[str]) -> list[str]:
+    misses = []
+    for item in expected:
+        verdict = await judge(item, lines)
+        if not verdict.conveyed:
+            misses.append(f"{item} -- {verdict.reason}")
+    return misses
+
+
+async def evaluate_case(case: EvalCase, model: str) -> CaseScore:
+    result = await filter_message(case.message, today=EVAL_DATE, model=model)
+    return CaseScore(
+        id=case.id,
+        facts_expected=len(case.expected_facts),
+        flags_expected=len(case.expected_flags),
+        unclear_expected=len(case.expected_unclear),
+        missed_facts=await missed(case.expected_facts, result.facts + result.questions),
+        missed_flags=await missed(case.expected_flags, result.notes),
+        missed_unclear=await missed(case.expected_unclear, result.notes),
+        reply_correct=reply_correct(case, result),
+        leaked=leaked_phrases(case, result),
+    )
+
+
+def rate(caught: int, expected: int) -> str:
+    if expected == 0:
+        return "n/a"
+    return f"{caught}/{expected} ({caught / expected:.0%})"
+
+
+def print_report(scores: list[CaseScore]) -> None:
+    for score in scores:
+        problems = (
+            [f"missed fact: {item}" for item in score.missed_facts]
+            + [f"missed flag: {item}" for item in score.missed_flags]
+            + [f"missed unclear: {item}" for item in score.missed_unclear]
+            + [f"hostile wording got through: {phrase}" for phrase in score.leaked]
+        )
+        if not score.reply_correct:
+            problems.append("needs-a-reply is wrong")
+
+        print(f"{'FAIL' if problems else 'PASS'}  {score.id}")
+        for problem in problems:
+            print(f"      {problem}")
+
+    facts = sum(score.facts_expected for score in scores)
+    flags = sum(score.flags_expected for score in scores)
+    unclear = sum(score.unclear_expected for score in scores)
+    missed_facts = sum(len(score.missed_facts) for score in scores)
+    missed_flags = sum(len(score.missed_flags) for score in scores)
+    missed_unclear = sum(len(score.missed_unclear) for score in scores)
+    replies = sum(score.reply_correct for score in scores)
+    clean = sum(not score.leaked for score in scores)
+
+    print()
+    print(f"Facts caught:           {rate(facts - missed_facts, facts)}")
+    print(f"Flags caught:           {rate(flags - missed_flags, flags)}")
+    print(f"Unclear details noted:  {rate(unclear - missed_unclear, unclear)}")
+    print(f"Needs-a-reply correct:  {rate(replies, len(scores))}")
+    print(f"Free of hostile wording: {rate(clean, len(scores))}")
+
+
+async def main(model_name: str) -> None:
+    model = MODELS[model_name]
+    print(f"Filter model: {model_name}")
+    scores = []
+    for case in load_cases():
+        print(f"Running {case.id}...")
+        scores.append(await evaluate_case(case, model))
+    print()
+    print_report(scores)
+
+
+if __name__ == "__main__":
+    asyncio.run(main(sys.argv[1] if len(sys.argv) > 1 else "sonnet"))

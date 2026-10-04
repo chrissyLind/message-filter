@@ -40,7 +40,7 @@
         ],
         "needs_reply": false,
         "expected_flags": [
-            "Your ex's lawyer is filing for full custody"
+            "The message mentions legal action"
         ],
         "forbidden": [
             "enjoy it while it lasts"
@@ -59,7 +59,8 @@
         "id": "buried-question",
         "message": "You are a fat stinking pig. Do you even shower? When was the last time you showered? Are you even teaching our children basic hygiene? Sam's retainer is disgusting. Where is that retainer cleaner I bought him? He needs to use that regularly.",
         "expected_facts": [
-            "Your ex wants to know where Sam's retainer cleaner is and is recommending that he use it regularly."
+            "Your ex wants to know where Sam's retainer cleaner is",
+            "Your ex is recommending that Sam use the retainer cleaner regularly"
         ],
         "needs_reply": true,
         "forbidden": [

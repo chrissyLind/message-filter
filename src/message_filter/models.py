@@ -7,10 +7,13 @@ class FilteredMessage(BaseModel):
         description="Practical facts, one per item, restated neutrally. Empty if there are none."
     )
     needs_reply: bool = Field(
-        description="True if the message contains a question or request that needs an answer."
+        description="True only if the sender is waiting for an answer: a direct "
+        "question, or a proposal that must be accepted or declined. An instruction "
+        "to do something does not need a reply."
     )
     questions: list[str] = Field(
-        description="The questions or requests that need an answer, restated neutrally. Empty if none."
+        description="The questions or proposals that are waiting for an answer, "
+        "restated neutrally. Empty if none."
     )
     notes: list[str] = Field(
         description="Anything unclear, and anything flagged such as threats, safety concerns "
