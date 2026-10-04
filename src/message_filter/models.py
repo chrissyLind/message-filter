@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +17,7 @@ class FilteredMessage(BaseModel):
         "or legal action. Empty if none."
     )
 
+
 class ReplyOption(BaseModel):
     label: str = Field(
         description="A short label for this option, such as 'Agree', 'Decline' or 'Acknowledge'."
@@ -28,4 +30,21 @@ class ReplyOption(BaseModel):
 class ReplyDrafts(BaseModel):
     options: list[ReplyOption] = Field(
         description="One to three alternative replies for the recipient to choose from."
+    )
+
+
+class Problem(BaseModel):
+    kind: Literal["missing", "incorrect", "hostile"] = Field(
+        description="'missing' if the summary left out something practical, "
+        "'incorrect' if a fact or question is wrong, "
+        "'hostile' if hostile wording got through."
+    )
+    description: str = Field(
+        description="The problem in one neutral sentence. Never quote hostile language."
+    )
+
+
+class CheckResult(BaseModel):
+    problems: list[Problem] = Field(
+        description="Every problem found. Empty if the summary is complete and accurate."
     )
