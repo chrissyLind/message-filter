@@ -11,6 +11,7 @@ from message_filter.llm import SENDER, SONNET, ask
 from message_filter.models import FilteredMessage
 from message_filter.filter import filter_message
 from message_filter.llm import HAIKU, SENDER, SONNET, ask
+from message_filter.check import check_summary
 
 CASES_FILE = Path("evals/cases.json")
 EVAL_DATE = date(2026, 10, 3)
@@ -85,6 +86,7 @@ class CaseScore(BaseModel):
     missed_unclear: list[str]
     reply_correct: bool
     leaked: list[str]
+    checker_problems: list[str]
 
 
 async def missed(expected: list[str], lines: list[str]) -> list[str]:
@@ -98,6 +100,7 @@ async def missed(expected: list[str], lines: list[str]) -> list[str]:
 
 async def evaluate_case(case: EvalCase, model: str) -> CaseScore:
     result = await filter_message(case.message, today=EVAL_DATE, model=model)
+    check = await check_summary(case.message, result, today=EVAL_DATE)
     return CaseScore(
         id=case.id,
         facts_expected=len(case.expected_facts),
@@ -108,6 +111,9 @@ async def evaluate_case(case: EvalCase, model: str) -> CaseScore:
         missed_unclear=await missed(case.expected_unclear, result.notes),
         reply_correct=reply_correct(case, result),
         leaked=leaked_phrases(case, result),
+        checker_problems=[
+            f"{problem.kind}: {problem.description}" for problem in check.problems
+        ],
     )
 
 
@@ -118,6 +124,11 @@ def rate(caught: int, expected: int) -> str:
 
 
 def print_report(scores: list[CaseScore]) -> None:
+    filter_errors = 0
+    caught = 0
+    filter_correct = 0
+    false_alarms = 0
+
     for score in scores:
         problems = (
             [f"missed fact: {item}" for item in score.missed_facts]
@@ -132,6 +143,21 @@ def print_report(scores: list[CaseScore]) -> None:
         for problem in problems:
             print(f"      {problem}")
 
+        if problems:
+            filter_errors += 1
+            if score.checker_problems:
+                caught += 1
+                label = "checker caught"
+            else:
+                print("      CHECKER MISSED IT: it reported no problems")
+        else:
+            filter_correct += 1
+            if score.checker_problems:
+                false_alarms += 1
+                label = "CHECKER FALSE ALARM"
+        for item in score.checker_problems:
+            print(f"      {label} -> {item}")
+
     facts = sum(score.facts_expected for score in scores)
     flags = sum(score.flags_expected for score in scores)
     unclear = sum(score.unclear_expected for score in scores)
@@ -142,12 +168,15 @@ def print_report(scores: list[CaseScore]) -> None:
     clean = sum(not score.leaked for score in scores)
 
     print()
-    print(f"Facts caught:           {rate(facts - missed_facts, facts)}")
-    print(f"Flags caught:           {rate(flags - missed_flags, flags)}")
-    print(f"Unclear details noted:  {rate(unclear - missed_unclear, unclear)}")
-    print(f"Needs-a-reply correct:  {rate(replies, len(scores))}")
+    print(f"Facts caught:            {rate(facts - missed_facts, facts)}")
+    print(f"Flags caught:            {rate(flags - missed_flags, flags)}")
+    print(f"Unclear details noted:   {rate(unclear - missed_unclear, unclear)}")
+    print(f"Needs-a-reply correct:   {rate(replies, len(scores))}")
     print(f"Free of hostile wording: {rate(clean, len(scores))}")
-
+    print()
+    print(f"Checker caught filter errors: {rate(caught, filter_errors)}")
+    print(f"Checker false alarms:         {rate(false_alarms, filter_correct)}")
+    
 
 async def main(model_name: str) -> None:
     model = MODELS[model_name]

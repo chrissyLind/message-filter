@@ -11,7 +11,9 @@ You will receive today's date, the original message inside <message> tags, and \
 the assistant's summary inside <summary> tags. Find problems in the summary. \
 Check for four kinds:
 - missing: practical information in the message that the summary left out, \
-such as a date, time, place, request, deadline, or something about the children.
+such as a date, time, place, request, deadline, or something about the \
+children. This includes a vague detail, such as "the usual time", that the \
+summary does not note as unclear.
 - incorrect: a fact or question that does not match the message, such as a \
 wrong date or time, or the wrong person doing something.
 - hostile: insults, blame, sarcasm or accusations that appear in the summary.
