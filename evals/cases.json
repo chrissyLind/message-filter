@@ -1,0 +1,86 @@
+[
+    {
+        "id": "pickup-change",
+        "message": "Why do you always have to make everything so difficult? I'll pick up Sam at 5:30 Friday from school, not 5. And send his inhaler this time, unlike last time when you completely forgot. Typical.",
+        "expected_facts": [
+            "Your ex will pick up Sam from school on Friday, October 9, 2026 at 5:30, not 5:00",
+            "Your ex asks you to send Sam's inhaler"
+        ],
+        "needs_reply": false,
+        "forbidden": [
+            "typical",
+            "so difficult"
+        ]
+    },
+    {
+        "id": "only-insults",
+        "message": "You are the most selfish person I have ever met. Everyone sees it.",
+        "expected_facts": [],
+        "needs_reply": false,
+        "forbidden": [
+            "selfish"
+        ]
+    },
+    {
+        "id": "weekend-swap",
+        "message": "Why is everything always so hard with you? I need to switch weekends. Can you take Sam on the 17th instead of the 10th?",
+        "expected_facts": [
+            "Your ex asks whether you can have Sam on October 17, 2026 instead of October 10, 2026"
+        ],
+        "needs_reply": true,
+        "forbidden": [
+            "so hard"
+        ]
+    },
+    {
+        "id": "legal-mention",
+        "message": "My lawyer is filing for full custody next week, so enjoy it while it lasts.",
+        "expected_facts": [
+            "Your ex says their lawyer is filing for full custody next week"
+        ],
+        "needs_reply": false,
+        "expected_flags": [
+            "Your ex's lawyer is filing for full custody"
+        ],
+        "forbidden": [
+            "enjoy it while it lasts"
+        ]
+    },
+    {
+        "id": "no-insults",
+        "message": "Would you like to have a family dinner next week sometime? Let me know what day works best.",
+        "expected_facts": [
+            "Your ex is asking if you would like to have a family dinner next week and what day would work"
+        ],
+        "needs_reply": true,
+        "forbidden": []
+    },
+    {
+        "id": "buried-question",
+        "message": "You are a fat stinking pig. Do you even shower? When was the last time you showered? Are you even teaching our children basic hygiene? Sam's retainer is disgusting. Where is that retainer cleaner I bought him? He needs to use that regularly.",
+        "expected_facts": [
+            "Your ex wants to know where Sam's retainer cleaner is and is recommending that he use it regularly."
+        ],
+        "needs_reply": true,
+        "forbidden": [
+            "fat stinking pig",
+            "When was the last time you showered",
+            "teaching our children basic hygiene",
+            "disgusting"
+        ]
+    },
+    {
+        "id": "vague-time",
+        "message": "How about we have dinner on Friday with the kids?",
+        "expected_facts": [
+            "Your ex is suggesting dinner on Friday October 9, 2026"
+        ],
+        "needs_reply": true,
+        "expected_unclear": [
+            "The time for dinner is not stated"
+        ],
+        "forbidden": [
+            "enjoy it while it lasts"
+        ]
+    }
+]
