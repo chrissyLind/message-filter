@@ -3,7 +3,13 @@ from fastapi.testclient import TestClient
 from twilio.request_validator import RequestValidator
 
 import message_filter.app as app_module
-from message_filter.models import CheckResult, FilteredMessage, ReplyDrafts, ReplyOption
+from message_filter.models import (
+    CheckResult,
+    FilteredMessage,
+    Problem,
+    ReplyDrafts,
+    ReplyOption,
+)
 
 MY_NUMBER = "whatsapp:+15550001111"
 TEST_TOKEN = "test-auth-token"
@@ -24,7 +30,7 @@ def check_finds_nothing(monkeypatch):
         return CheckResult(problems=[])
 
     monkeypatch.setattr(app_module, "check_summary", fake_check)
-    
+
 
 @pytest.fixture
 def filter_calls(monkeypatch):
@@ -45,6 +51,11 @@ NEEDS_REPLY = FilteredMessage(
     needs_reply=True,
     questions=["Can you take Sam on the 17th?"],
     notes=[],
+)
+
+
+FOUND_PROBLEM = CheckResult(
+    problems=[Problem(kind="incorrect", description="The pickup time may be wrong.")]
 )
 
 
@@ -165,3 +176,49 @@ def test_still_sends_facts_when_drafting_fails(client, filter_needs_reply, monke
     assert response.text.count("<Message>") == 1
     assert "Request to switch weekends" in response.text
     assert "I couldn't draft replies this time" in response.text
+
+
+def test_puts_warning_above_facts(client, filter_calls, monkeypatch):
+    async def fake_check(text, filtered):
+        return FOUND_PROBLEM
+
+    monkeypatch.setattr(app_module, "check_summary", fake_check)
+
+    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+
+    assert response.status_code == 200
+    assert "May be wrong: The pickup time may be wrong." in response.text
+    assert response.text.index("WARNING") < response.text.index("FACTS")
+
+
+def test_says_so_when_check_fails(client, filter_calls, monkeypatch):
+    async def broken_check(text, filtered):
+        raise RuntimeError("API is down")
+
+    monkeypatch.setattr(app_module, "check_summary", broken_check)
+
+    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+
+    assert response.status_code == 200
+    assert "I couldn't double-check this summary" in response.text
+    assert "Pickup at 5:30" in response.text
+
+
+def test_still_sends_drafts_when_check_finds_problems(
+    client, filter_needs_reply, monkeypatch
+):
+    async def fake_check(text, filtered):
+        return FOUND_PROBLEM
+
+    async def fake_drafts(filtered):
+        return ReplyDrafts(
+            options=[ReplyOption(label="Agree", text="Yes, I can take Sam on the 17th.")]
+        )
+
+    monkeypatch.setattr(app_module, "check_summary", fake_check)
+    monkeypatch.setattr(app_module, "draft_replies", fake_drafts)
+
+    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+
+    assert "WARNING" in response.text
+    assert response.text.count("<Message>") == 2
