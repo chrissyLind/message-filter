@@ -57,7 +57,13 @@ CASES = [
         [],
         ["ex wants to take Sam on October 17"],
         id = "FACT mixup"
-    )
+    ),
+    pytest.param(
+        "I'll pick up Sam on Friday at 5:30 from school. Try to have him ready for once.",
+        ["october", "9", "5:30"],
+        ["for once"],
+        id="weekday-uses-tool",
+    ),
 ]
 
 
