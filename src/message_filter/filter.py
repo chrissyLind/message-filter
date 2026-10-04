@@ -1,10 +1,7 @@
 from datetime import date
-import anthropic
 
+from message_filter.llm import HAIKU, ask, format_today
 from message_filter.models import FilteredMessage
-
-MODEL = "claude-haiku-4-5-20251001"
-TOOL_NAME = "record_filtered_message"
 
 SYSTEM_PROMPT = """You help a parent going through a high-conflict divorce read \
 messages from their ex-spouse without being exposed to hostile content.
@@ -40,34 +37,8 @@ recipient "you" and the sender "your ex". For example, "Can you take \
 Sam on the 17th instead of the 10th?" becomes "Your ex asks whether \
 you can have Sam on October 17 instead of October 10."
 
-Record your result by calling the record_filtered_message tool.
 """
 
-client = anthropic.AsyncAnthropic()
-
-
 async def filter_message(text: str, today: date | None = None) -> FilteredMessage:
-    if today is None:
-        today = date.today()
-    today_text = today.strftime("%A, %B %d, %Y")
-    response = await client.messages.create(
-        model=MODEL,
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        tools=[
-            {
-                "name": TOOL_NAME,
-                "description": "Record the practical information extracted from the message.",
-                "input_schema": FilteredMessage.model_json_schema(),
-            }
-        ],
-        tool_choice={"type": "tool", "name": TOOL_NAME},
-        messages=[
-            {
-                "role": "user",
-                "content": f"Today is {today_text}.\n\n<message>\n{text}\n</message>",
-            }
-        ],
-    )
-    tool_use = next(block for block in response.content if block.type == "tool_use")
-    return FilteredMessage.model_validate(tool_use.input)
+    content = f"Today is {format_today(today)}.\n\n<message>\n{text}\n</message>"
+    return await ask(HAIKU, SYSTEM_PROMPT, content, FilteredMessage)

@@ -6,6 +6,7 @@ import pytest
 
 import message_filter.filter as filter_module
 from message_filter.formatting import format_for_whatsapp
+import message_filter.llm as llm_module
 
 TEST_DATE = date(2026, 10, 3)
 CASES = [
@@ -62,7 +63,7 @@ CASES = [
 @pytest.mark.llm
 @pytest.mark.parametrize("message, must_include, must_exclude", CASES)
 def test_filter(message, must_include, must_exclude, monkeypatch):
-    monkeypatch.setattr(filter_module, "client", anthropic.AsyncAnthropic())
+    monkeypatch.setattr(llm_module, "client", anthropic.AsyncAnthropic())
 
     filtered = asyncio.run(filter_module.filter_message(message, today=TEST_DATE))
     result = format_for_whatsapp(filtered).lower()
