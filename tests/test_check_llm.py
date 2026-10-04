@@ -6,6 +6,7 @@ import pytest
 
 import message_filter.check as check_module
 from message_filter.models import FilteredMessage
+import message_filter.llm as llm_module
 
 TEST_DATE = date(2026, 10, 3)
 MESSAGE = (
@@ -15,7 +16,7 @@ MESSAGE = (
 
 
 def run_check(summary, monkeypatch):
-    monkeypatch.setattr(check_module, "client", anthropic.AsyncAnthropic())
+    monkeypatch.setattr(llm_module, "client", anthropic.AsyncAnthropic())
     return asyncio.run(check_module.check_summary(MESSAGE, summary, today=TEST_DATE))
 
 

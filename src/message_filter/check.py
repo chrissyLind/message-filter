@@ -1,10 +1,7 @@
 from datetime import date
 
-import anthropic
-
+from message_filter.llm import SONNET, ask, format_today
 from message_filter.models import CheckResult, FilteredMessage
-
-MODEL = "claude-sonnet-5-5"
 
 SYSTEM_PROMPT = """You check the work of an assistant that summarizes messages \
 for a parent going through a high-conflict divorce. The assistant removes \
@@ -41,32 +38,12 @@ place, report it as incorrect and say which fact is wrong.
 
 """
 
-client = anthropic.AsyncAnthropic()
-
-
 async def check_summary(
     text: str, filtered: FilteredMessage, today: date | None = None
 ) -> CheckResult:
-    if today is None:
-        today = date.today()
-    today_text = today.strftime("%A, %B %d, %Y")
-
-    response = await client.messages.parse(
-        model=MODEL,
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Today is {today_text}.\n\n"
-                    f"<message>\n{text}\n</message>\n\n"
-                    f"<summary>\n{filtered.model_dump_json(indent=2)}\n</summary>"
-                ),
-            }
-        ],
-        output_format=CheckResult,
+    content = (
+        f"Today is {format_today(today)}.\n\n"
+        f"<message>\n{text}\n</message>\n\n"
+        f"<summary>\n{filtered.model_dump_json(indent=2)}\n</summary>"
     )
-    if response.parsed_output is None:
-        raise RuntimeError("The checker returned no result")
-    return response.parsed_output
+    return await ask(SONNET, SYSTEM_PROMPT, content, CheckResult)
