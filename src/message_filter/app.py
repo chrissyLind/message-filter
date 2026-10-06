@@ -17,6 +17,7 @@ from message_filter.formatting import (
 from message_filter.models import CheckResult, FilteredMessage, ReplyDrafts
 from message_filter.reply import draft_replies
 from message_filter.sender import send_messages
+from message_filter.archive import archive_message
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,13 @@ async def safe_drafts(result: FilteredMessage) -> ReplyDrafts | None:
         return None
 
 
+async def safe_archive(message_sid: str, sender: str, body: str) -> None:
+    try:
+        await archive_message(message_sid, sender, body)
+    except Exception:
+        logger.exception("Archiving failed")
+
+
 async def build_reply(body: str) -> list[str]:
     try:
         result = await filter_message(body)
@@ -79,7 +87,10 @@ async def build_reply(body: str) -> list[str]:
     return ["\n\n".join(parts)] + draft_texts
 
 
-async def process_message(body: str, recipient: str, sandbox_number: str) -> None:
+async def process_message(
+    message_sid: str, body: str, recipient: str, sandbox_number: str
+) -> None:
+    await safe_archive(message_sid, recipient, body)
     texts = await build_reply(body)
     try:
         await send_messages(sandbox_number, recipient, texts)
@@ -101,10 +112,14 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     if not is_from_twilio(params, signature):
         return Response(status_code=403)
 
-    if params.get("From", "") != ALLOWED_SENDER:
+    if not ALLOWED_SENDER or params.get("From") != ALLOWED_SENDER:
         return Response(status_code=403)
 
     background_tasks.add_task(
-        process_message, params.get("Body", ""), params["From"], params.get("To", "")
+        process_message,
+        params.get("MessageSid", "unknown"),
+        params.get("Body", ""),
+        params["From"],
+        params.get("To", ""),
     )
     return Response(content=str(MessagingResponse()), media_type="application/xml")

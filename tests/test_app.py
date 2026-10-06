@@ -55,6 +55,17 @@ def sent(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def archived(monkeypatch):
+    records = []
+
+    async def fake_archive(message_sid, sender, body):
+        records.append((message_sid, sender, body))
+
+    monkeypatch.setattr(app_module, "archive_message", fake_archive)
+    return records
+
+
+@pytest.fixture(autouse=True)
 def check_finds_nothing(monkeypatch):
     async def fake_check(text, filtered):
         return CheckResult(problems=[])
@@ -85,7 +96,7 @@ def filter_needs_reply(monkeypatch):
 
 
 def signed_post(client, data):
-    data = {"To": SANDBOX_NUMBER, **data}
+    data = {"To": SANDBOX_NUMBER, "MessageSid": "SMtest", **data}
     signature = RequestValidator(TEST_TOKEN).compute_signature(TEST_URL, data)
     return client.post("/whatsapp", data=data, headers={"X-Twilio-Signature": signature})
 
@@ -263,3 +274,48 @@ def test_survives_a_failed_send(client, filter_calls, monkeypatch):
     response = post_message(client)
 
     assert response.status_code == 200
+
+
+def test_archives_the_original_untouched(client, filter_calls, archived):
+    post_message(client, "You're so selfish. Pickup at 5:30.")
+
+    assert archived == [("SMtest", MY_NUMBER, "You're so selfish. Pickup at 5:30.")]
+
+
+def test_archives_before_filtering(client, monkeypatch):
+    events = []
+
+    async def fake_archive(message_sid, sender, body):
+        events.append("archive")
+
+    async def fake_filter(text):
+        events.append("filter")
+        return FilteredMessage(facts=[], needs_reply=False, questions=[], notes=[])
+
+    monkeypatch.setattr(app_module, "archive_message", fake_archive)
+    monkeypatch.setattr(app_module, "filter_message", fake_filter)
+
+    post_message(client)
+
+    assert events == ["archive", "filter"]
+
+
+def test_still_replies_when_archiving_fails(client, filter_calls, sent, monkeypatch):
+    async def broken_archive(message_sid, sender, body):
+        raise RuntimeError("S3 is down")
+
+    monkeypatch.setattr(app_module, "archive_message", broken_archive)
+
+    post_message(client)
+
+    assert len(sent) == 1
+    assert "Pickup at 5:30" in sent[0]
+
+
+def test_rejects_everything_when_no_sender_is_configured(client, filter_calls, monkeypatch):
+    monkeypatch.setattr(app_module, "ALLOWED_SENDER", "")
+
+    response = signed_post(client, {"Body": "hi"})
+
+    assert response.status_code == 403
+    assert filter_calls == []
