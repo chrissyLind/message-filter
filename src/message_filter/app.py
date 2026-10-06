@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import Response
 from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
@@ -16,6 +16,7 @@ from message_filter.formatting import (
 )
 from message_filter.models import CheckResult, FilteredMessage, ReplyDrafts
 from message_filter.reply import draft_replies
+from message_filter.sender import send_messages
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +32,6 @@ def is_from_twilio(params: dict[str, str], signature: str) -> bool:
         return False
     validator = RequestValidator(TWILIO_AUTH_TOKEN)
     return validator.validate(PUBLIC_WEBHOOK_URL, params, signature)
-
-
-def twiml_response(messages: list[str]) -> Response:
-    reply = MessagingResponse()
-    for text in messages:
-        reply.message(text)
-    return Response(content=str(reply), media_type="application/xml")
 
 
 async def safe_check(text: str, result: FilteredMessage) -> CheckResult | None:
@@ -56,34 +50,15 @@ async def safe_drafts(result: FilteredMessage) -> ReplyDrafts | None:
     except Exception:
         logger.exception("Drafting replies failed")
         return None
-    
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
 
 
-@app.post("/whatsapp")
-async def whatsapp_webhook(request: Request):
-    form = await request.form()
-    params = {key: str(value) for key, value in form.items()}
-    signature = request.headers.get("X-Twilio-Signature", "")
-
-    if not is_from_twilio(params, signature):
-        return Response(status_code=403)
-
-    if params.get("From", "") != ALLOWED_SENDER:
-        return Response(status_code=403)
-
-    body = params.get("Body", "")
+async def build_reply(body: str) -> list[str]:
     try:
         result = await filter_message(body)
         summary = format_for_whatsapp(result)
     except Exception:
         logger.exception("Filtering failed")
-        return twiml_response(
-            ["Sorry, I couldn't filter that message. Please try again in a minute."]
-        )
+        return ["Sorry, I couldn't filter that message. Please try again in a minute."]
 
     check, drafts = await asyncio.gather(safe_check(body, result), safe_drafts(result))
 
@@ -101,4 +76,35 @@ async def whatsapp_webhook(request: Request):
     elif result.needs_reply:
         parts.append("I couldn't draft replies this time.")
 
-    return twiml_response(["\n\n".join(parts)] + draft_texts)
+    return ["\n\n".join(parts)] + draft_texts
+
+
+async def process_message(body: str, recipient: str, sandbox_number: str) -> None:
+    texts = await build_reply(body)
+    try:
+        await send_messages(sandbox_number, recipient, texts)
+    except Exception:
+        logger.exception("Sending the reply failed")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.post("/whatsapp")
+async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
+    form = await request.form()
+    params = {key: str(value) for key, value in form.items()}
+    signature = request.headers.get("X-Twilio-Signature", "")
+
+    if not is_from_twilio(params, signature):
+        return Response(status_code=403)
+
+    if params.get("From", "") != ALLOWED_SENDER:
+        return Response(status_code=403)
+
+    background_tasks.add_task(
+        process_message, params.get("Body", ""), params["From"], params.get("To", "")
+    )
+    return Response(content=str(MessagingResponse()), media_type="application/xml")

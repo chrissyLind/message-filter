@@ -12,8 +12,27 @@ from message_filter.models import (
 )
 
 MY_NUMBER = "whatsapp:+15550001111"
+SANDBOX_NUMBER = "whatsapp:+14155238886"
 TEST_TOKEN = "test-auth-token"
 TEST_URL = "https://example.test/whatsapp"
+
+NEEDS_REPLY = FilteredMessage(
+    facts=["Request to switch weekends"],
+    needs_reply=True,
+    questions=["Can you take Sam on the 17th?"],
+    notes=[],
+)
+
+FOUND_PROBLEM = CheckResult(
+    problems=[Problem(kind="incorrect", description="The pickup time may be wrong.")]
+)
+
+TWO_DRAFTS = ReplyDrafts(
+    options=[
+        ReplyOption(label="Agree", text="Yes, I can take Sam on the 17th."),
+        ReplyOption(label="Decline", text="I am not able to switch that weekend."),
+    ]
+)
 
 
 @pytest.fixture
@@ -22,6 +41,17 @@ def client(monkeypatch):
     monkeypatch.setattr(app_module, "TWILIO_AUTH_TOKEN", TEST_TOKEN)
     monkeypatch.setattr(app_module, "PUBLIC_WEBHOOK_URL", TEST_URL)
     return TestClient(app_module.app)
+
+
+@pytest.fixture(autouse=True)
+def sent(monkeypatch):
+    texts_sent = []
+
+    async def fake_send(from_number, to_number, texts):
+        texts_sent.extend(texts)
+
+    monkeypatch.setattr(app_module, "send_messages", fake_send)
+    return texts_sent
 
 
 @pytest.fixture(autouse=True)
@@ -46,19 +76,6 @@ def filter_calls(monkeypatch):
     return calls
 
 
-NEEDS_REPLY = FilteredMessage(
-    facts=["Request to switch weekends"],
-    needs_reply=True,
-    questions=["Can you take Sam on the 17th?"],
-    notes=[],
-)
-
-
-FOUND_PROBLEM = CheckResult(
-    problems=[Problem(kind="incorrect", description="The pickup time may be wrong.")]
-)
-
-
 @pytest.fixture
 def filter_needs_reply(monkeypatch):
     async def fake_filter(text):
@@ -68,8 +85,13 @@ def filter_needs_reply(monkeypatch):
 
 
 def signed_post(client, data):
+    data = {"To": SANDBOX_NUMBER, **data}
     signature = RequestValidator(TEST_TOKEN).compute_signature(TEST_URL, data)
     return client.post("/whatsapp", data=data, headers={"X-Twilio-Signature": signature})
+
+
+def post_message(client, body="anything"):
+    return signed_post(client, {"Body": body, "From": MY_NUMBER})
 
 
 def test_health(client):
@@ -79,14 +101,15 @@ def test_health(client):
     assert response.json() == {"status": "ok"}
 
 
-def test_rejects_missing_signature(client, filter_calls):
+def test_rejects_missing_signature(client, filter_calls, sent):
     response = client.post("/whatsapp", data={"Body": "hi", "From": MY_NUMBER})
 
     assert response.status_code == 403
     assert filter_calls == []
+    assert sent == []
 
 
-def test_rejects_wrong_signature(client, filter_calls):
+def test_rejects_wrong_signature(client, filter_calls, sent):
     response = client.post(
         "/whatsapp",
         data={"Body": "hi", "From": MY_NUMBER},
@@ -95,61 +118,60 @@ def test_rejects_wrong_signature(client, filter_calls):
 
     assert response.status_code == 403
     assert filter_calls == []
+    assert sent == []
 
 
-def test_rejects_unknown_sender(client, filter_calls):
+def test_rejects_unknown_sender(client, filter_calls, sent):
     response = signed_post(client, {"Body": "hi", "From": "whatsapp:+19999999999"})
 
     assert response.status_code == 403
     assert filter_calls == []
+    assert sent == []
 
 
-def test_returns_filtered_text(client, filter_calls):
-    response = signed_post(
-        client, {"Body": "You're so selfish. Pickup at 5:30.", "From": MY_NUMBER}
-    )
+def test_answers_twilio_with_an_empty_response(client, filter_calls):
+    response = post_message(client)
 
     assert response.status_code == 200
-    assert "Pickup at 5:30" in response.text
-    assert "selfish" not in response.text
+    assert "<Message>" not in response.text
 
 
-def test_never_shows_original_when_filter_fails(client, monkeypatch):
+def test_sends_filtered_text(client, filter_calls, sent):
+    post_message(client, "You're so selfish. Pickup at 5:30.")
+
+    assert len(sent) == 1
+    assert "Pickup at 5:30" in sent[0]
+    assert "selfish" not in sent[0]
+
+
+def test_never_shows_original_when_filter_fails(client, sent, monkeypatch):
     async def broken_filter(text):
         raise RuntimeError("API is down")
 
     monkeypatch.setattr(app_module, "filter_message", broken_filter)
 
-    response = signed_post(
-        client, {"Body": "You're so selfish. Pickup at 5:30.", "From": MY_NUMBER}
-    )
+    post_message(client, "You're so selfish. Pickup at 5:30.")
 
-    assert response.status_code == 200
-    assert "filter that message" in response.text
-    assert "selfish" not in response.text
+    assert len(sent) == 1
+    assert "filter that message" in sent[0]
+    assert "selfish" not in sent[0]
 
 
-def test_sends_each_draft_as_its_own_message(client, filter_needs_reply, monkeypatch):
+def test_sends_each_draft_as_its_own_message(client, filter_needs_reply, sent, monkeypatch):
     async def fake_drafts(filtered):
-        return ReplyDrafts(
-            options=[
-                ReplyOption(label="Agree", text="Yes, I can take Sam on the 17th."),
-                ReplyOption(label="Decline", text="I am not able to switch that weekend."),
-            ]
-        )
+        return TWO_DRAFTS
 
     monkeypatch.setattr(app_module, "draft_replies", fake_drafts)
 
-    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+    post_message(client)
 
-    assert response.status_code == 200
-    assert response.text.count("<Message>") == 3
-    assert "DRAFT REPLIES (Agree, Decline)" in response.text
-    assert "<Message>Yes, I can take Sam on the 17th.</Message>" in response.text
-    assert "<Message>I am not able to switch that weekend.</Message>" in response.text
+    assert len(sent) == 3
+    assert "DRAFT REPLIES (Agree, Decline)" in sent[0]
+    assert sent[1] == "Yes, I can take Sam on the 17th."
+    assert sent[2] == "I am not able to switch that weekend."
 
 
-def test_skips_drafts_when_no_reply_needed(client, filter_calls, monkeypatch):
+def test_skips_drafts_when_no_reply_needed(client, filter_calls, sent, monkeypatch):
     draft_calls = []
 
     async def fake_drafts(filtered):
@@ -158,67 +180,86 @@ def test_skips_drafts_when_no_reply_needed(client, filter_calls, monkeypatch):
 
     monkeypatch.setattr(app_module, "draft_replies", fake_drafts)
 
-    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+    post_message(client)
 
-    assert response.text.count("<Message>") == 1
+    assert len(sent) == 1
     assert draft_calls == []
 
 
-def test_still_sends_facts_when_drafting_fails(client, filter_needs_reply, monkeypatch):
+def test_still_sends_facts_when_drafting_fails(client, filter_needs_reply, sent, monkeypatch):
     async def broken_drafts(filtered):
         raise RuntimeError("API is down")
 
     monkeypatch.setattr(app_module, "draft_replies", broken_drafts)
 
-    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+    post_message(client)
 
-    assert response.status_code == 200
-    assert response.text.count("<Message>") == 1
-    assert "Request to switch weekends" in response.text
-    assert "I couldn't draft replies this time" in response.text
+    assert len(sent) == 1
+    assert "Request to switch weekends" in sent[0]
+    assert "draft replies this time" in sent[0]
 
 
-def test_puts_warning_above_facts(client, filter_calls, monkeypatch):
+def test_puts_warning_above_facts(client, filter_calls, sent, monkeypatch):
     async def fake_check(text, filtered):
         return FOUND_PROBLEM
 
     monkeypatch.setattr(app_module, "check_summary", fake_check)
 
-    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+    post_message(client)
 
-    assert response.status_code == 200
-    assert "May be wrong: The pickup time may be wrong." in response.text
-    assert response.text.index("WARNING") < response.text.index("FACTS")
+    assert "May be wrong: The pickup time may be wrong." in sent[0]
+    assert sent[0].index("WARNING") < sent[0].index("FACTS")
 
 
-def test_says_so_when_check_fails(client, filter_calls, monkeypatch):
+def test_says_so_when_check_fails(client, filter_calls, sent, monkeypatch):
     async def broken_check(text, filtered):
         raise RuntimeError("API is down")
 
     monkeypatch.setattr(app_module, "check_summary", broken_check)
 
-    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+    post_message(client)
 
-    assert response.status_code == 200
-    assert "I couldn't double-check this summary" in response.text
-    assert "Pickup at 5:30" in response.text
+    assert "double-check this summary" in sent[0]
+    assert "Pickup at 5:30" in sent[0]
 
 
 def test_still_sends_drafts_when_check_finds_problems(
-    client, filter_needs_reply, monkeypatch
+    client, filter_needs_reply, sent, monkeypatch
 ):
     async def fake_check(text, filtered):
         return FOUND_PROBLEM
 
     async def fake_drafts(filtered):
-        return ReplyDrafts(
-            options=[ReplyOption(label="Agree", text="Yes, I can take Sam on the 17th.")]
-        )
+        return TWO_DRAFTS
 
     monkeypatch.setattr(app_module, "check_summary", fake_check)
     monkeypatch.setattr(app_module, "draft_replies", fake_drafts)
 
-    response = signed_post(client, {"Body": "anything", "From": MY_NUMBER})
+    post_message(client)
 
-    assert "WARNING" in response.text
-    assert response.text.count("<Message>") == 2
+    assert "WARNING" in sent[0]
+    assert len(sent) == 3
+
+
+def test_replies_from_the_sandbox_number_to_the_sender(client, filter_calls, monkeypatch):
+    addresses = []
+
+    async def fake_send(from_number, to_number, texts):
+        addresses.append((from_number, to_number))
+
+    monkeypatch.setattr(app_module, "send_messages", fake_send)
+
+    post_message(client)
+
+    assert addresses == [(SANDBOX_NUMBER, MY_NUMBER)]
+
+
+def test_survives_a_failed_send(client, filter_calls, monkeypatch):
+    async def broken_send(from_number, to_number, texts):
+        raise RuntimeError("Twilio is down")
+
+    monkeypatch.setattr(app_module, "send_messages", broken_send)
+
+    response = post_message(client)
+
+    assert response.status_code == 200
