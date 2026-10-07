@@ -4,7 +4,7 @@ import logging
 from message_filter.jobs import delete, receive
 from message_filter.pipeline import process_job
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("message_filter.worker")
 
 
 from message_filter.dedupe import claim, mark_done, release
@@ -67,5 +67,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger("message_filter").setLevel(logging.INFO)
     asyncio.run(main())

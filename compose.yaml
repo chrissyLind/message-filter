@@ -1,0 +1,24 @@
+services:
+  redis:
+    image: redis:7
+
+  web:
+    build: .
+    image: message-filter
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ~/.aws:/root/.aws:ro
+
+  worker:
+    build: .
+    image: message-filter
+    command: [ "python", "-m", "message_filter.worker" ]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ~/.aws:/root/.aws:ro
+    depends_on:
+      - redis
