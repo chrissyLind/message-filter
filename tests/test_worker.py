@@ -4,6 +4,8 @@ import pytest
 
 import message_filter.worker as worker
 from message_filter.jobs import Job
+from message_filter import dedupe
+from message_filter.dedupe import claim
 
 JOB = Job(
     message_sid="SMtest",
@@ -22,6 +24,17 @@ def deleted(monkeypatch):
 
     monkeypatch.setattr(worker, "delete", fake_delete)
     return handles
+
+
+@pytest.fixture
+def processed(monkeypatch):
+    jobs = []
+
+    async def fake_process(job):
+        jobs.append(job)
+
+    monkeypatch.setattr(worker, "process_job", fake_process)
+    return jobs
 
 
 def queue_returns(monkeypatch, value):
@@ -64,3 +77,49 @@ def test_does_nothing_when_the_queue_is_empty(deleted, monkeypatch):
     asyncio.run(worker.handle_next_job())
 
     assert deleted == []
+
+
+def test_processes_a_duplicate_only_once(deleted, processed, monkeypatch):
+    queue_returns(monkeypatch, (JOB, "handle-1"))
+    asyncio.run(worker.handle_next_job())
+
+    queue_returns(monkeypatch, (JOB, "handle-2"))
+    asyncio.run(worker.handle_next_job())
+
+    assert processed == [JOB]
+    assert deleted == ["handle-1", "handle-2"]
+
+
+def test_leaves_a_job_that_is_already_in_progress(deleted, processed, monkeypatch):
+    asyncio.run(claim("SMtest"))
+    queue_returns(monkeypatch, (JOB, "handle-1"))
+
+    asyncio.run(worker.handle_next_job())
+
+    assert processed == []
+    assert deleted == []
+
+
+def test_a_failed_job_can_be_claimed_again(deleted, monkeypatch):
+    async def broken_process(job):
+        raise RuntimeError("Twilio is down")
+
+    queue_returns(monkeypatch, (JOB, "handle-1"))
+    monkeypatch.setattr(worker, "process_job", broken_process)
+
+    asyncio.run(worker.handle_next_job())
+
+    assert asyncio.run(claim("SMtest")) == "new"
+
+
+def test_processes_anyway_when_redis_is_down(deleted, processed, monkeypatch):
+    def broken_client():
+        raise ConnectionError("Redis is down")
+
+    monkeypatch.setattr(dedupe, "get_client", broken_client)
+    queue_returns(monkeypatch, (JOB, "handle-1"))
+
+    asyncio.run(worker.handle_next_job())
+
+    assert processed == [JOB]
+    assert deleted == ["handle-1"]
