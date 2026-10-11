@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 from twilio.request_validator import RequestValidator
@@ -107,3 +109,14 @@ def test_tells_you_when_the_message_cannot_be_queued(client, monkeypatch):
 
     assert response.status_code == 200
     assert "forward it again" in response.text
+
+
+def access_record(message):
+    return logging.LogRecord("uvicorn.access", logging.INFO, __file__, 0, message, None, None)
+
+
+def test_health_checks_are_left_out_of_the_access_log():
+    health_filter = app_module.HealthCheckFilter()
+
+    assert not health_filter.filter(access_record('10.42.0.1:1 - "GET /health HTTP/1.1" 200'))
+    assert health_filter.filter(access_record('10.42.0.14:1 - "POST /whatsapp HTTP/1.1" 200'))

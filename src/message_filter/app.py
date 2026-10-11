@@ -10,6 +10,14 @@ from message_filter.jobs import Job, enqueue
 
 logger = logging.getLogger(__name__)
 
+
+class HealthCheckFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/health" not in record.getMessage()
+
+
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+
 app = FastAPI()
 
 ALLOWED_SENDER = os.environ.get("ALLOWED_SENDER", "")
