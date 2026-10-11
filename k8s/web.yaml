@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: message-filter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: message-filter:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: app-env
+            - secretRef:
+                name: aws-credentials
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: us-east-2
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: message-filter
+spec:
+  type: LoadBalancer
+  selector:
+    app: web
+  ports:
+    - port: 8000
+      targetPort: 8000
