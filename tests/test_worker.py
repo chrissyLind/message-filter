@@ -123,3 +123,19 @@ def test_processes_anyway_when_redis_is_down(deleted, processed, monkeypatch):
 
     assert processed == [JOB]
     assert deleted == ["handle-1"]
+
+
+def test_finishes_the_current_job_then_stops(monkeypatch):
+    stopping = asyncio.Event()
+    calls = []
+
+    async def fake_handle_next_job():
+        calls.append("job")
+        if len(calls) == 2:
+            stopping.set()
+
+    monkeypatch.setattr(worker, "handle_next_job", fake_handle_next_job)
+
+    asyncio.run(worker.run(stopping))
+
+    assert calls == ["job", "job"]
