@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ngrok
+  namespace: message-filter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ngrok
+  template:
+    metadata:
+      labels:
+        app: ngrok
+    spec:
+      containers:
+        - name: ngrok
+          image: ngrok/ngrok:3.39.11-alpine
+          args:
+            - http
+            - --url=https://unkempt-cycling-purplish.ngrok-free.dev
+            - --log=stdout
+            - http://web:8000
+          envFrom:
+            - secretRef:
+                name: ngrok
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
