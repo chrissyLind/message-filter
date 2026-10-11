@@ -13,10 +13,12 @@ spec:
       labels:
         app: web
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull
       containers:
         - name: web
-          image: message-filter:latest
-          imagePullPolicy: Never
+          image: ghcr.io/chrissylind/message-filter:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           envFrom:
@@ -24,6 +26,7 @@ spec:
                 name: app-env
             - secretRef:
                 name: aws-credentials
+                optional: true
           env:
             - name: AWS_DEFAULT_REGION
               value: us-east-2
@@ -35,6 +38,12 @@ spec:
             httpGet:
               path: /health
               port: 8000
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
 ---
 apiVersion: v1
 kind: Service
