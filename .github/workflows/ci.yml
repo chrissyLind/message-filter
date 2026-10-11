@@ -13,3 +13,24 @@ jobs:
       - uses: astral-sh/setup-uv@v9.0.0
       - run: uv sync --locked
       - run: uv run pytest
+  image:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/chrissylind/message-filter:latest
+            ghcr.io/chrissylind/message-filter:${{ github.sha }}
