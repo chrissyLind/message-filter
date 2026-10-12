@@ -41,10 +41,10 @@ Each step is a separate call to Claude, with its own prompt and a typed result. 
 | Agent | Model | Job | Returns |
 | --- | --- | --- | --- |
 | Filter | Claude Sonnet | Extract the practical facts; flag threats, legal mentions and vague details | Facts, whether a reply is needed, the questions asked, notes |
-| Checker | Claude Sonnet | Compare the summary with the original and report anything missing, wrong, hostile or unflagged | A list of problems, each with a kind and a description |
-| Reply | Claude Haiku | Draft one to three calm, brief replies that never invent facts | Labelled draft replies |
+| Checker | Claude Sonnet | Compare the summary with the original and report anything missing, wrong, hostile or unflagged | A list of problems, each with a type and a description |
+| Reply | Claude Haiku | Draft one to three calm, brief replies that never invent facts | Labeled draft replies |
 
-**The tool loop is written by hand.** Models get relative dates wrong, so the filter doesn't work out "next Friday" itself: it calls a deterministic `next_weekday` tool. The loop runs the requested tool and returns the result to the model. A tool error is reported back to the model rather than crashing the request, and the loop stops after five rounds so a confused model can't loop forever.
+**The tool-use loop is implemented directly against the API**, without an agent framework. Models get relative dates wrong, so the filter doesn't work out "next Friday" itself: it calls a deterministic `next_weekday` tool. The loop runs the requested tool and returns the result to the model. A tool error is reported back to the model rather than crashing the request, and the loop stops after five rounds so a confused model can't loop forever.
 
 **The message is treated as data, never as instructions.** It is wrapped in tags, and the prompt tells the model to treat anything inside them as content to summarize. So a message saying "ignore your instructions" is reported, not obeyed.
 
@@ -65,7 +65,7 @@ Results that changed the design:
 | Haiku as the filter repeatedly missed a question buried in a long message, and prompt changes didn't fix it | Moved the filter to Sonnet, which passed all 7 cases. Sonnet costs twice as much per token, which is negligible at personal volume |
 | The checker caught Haiku's missed question, with no false alarms across 12 correct summaries | Kept the checker as an independent safety net |
 | A checker on Haiku missed a summary that reversed who was doing what; on Sonnet it caught it | Moved the checker to Sonnet |
-| Some failures were the answer key's fault, or the judge being too literal | Fixed the cases and the judge prompt, not the system: a failing evaluation has three possible causes, and only one is the code |
+| Some failures were the answer key's fault, or the judge being too literal | Fixed the cases and the judge prompt |
 
 Run it with:
 
@@ -82,7 +82,7 @@ uv run --env-file .env python -m message_filter.evaluate sonnet
 - **Fail open where a mistake is cheap, fail closed where it isn't.** If Redis is unreachable, the worker processes the message anyway: a duplicate summary is a nuisance, a lost message is not. The security checks do the opposite: if their configuration is missing, they reject everything.
 - **Nothing is lost silently.** A job that fails three times moves to a dead-letter queue.
 - **The worker shuts down cleanly.** On SIGTERM it finishes the message it's working on and takes no new ones. The pod's grace period is 60 seconds, enough for a 20-second queue poll plus the slowest job.
-- **Dates use New York time, not the server's clock.** The server runs on UTC, which would make "today" wrong every evening after 8 p.m.
+- **Dates use configured timezone, not the server's clock.** The server runs on UTC, which would make "today" wrong depending on your timezone.
 
 ### Security and privacy
 
