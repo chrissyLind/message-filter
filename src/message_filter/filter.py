@@ -3,6 +3,7 @@ from datetime import date
 from message_filter.llm import SONNET, SENDER, ask_with_tools, format_today
 from message_filter.models import FilteredMessage
 from message_filter.tools import TOOLS, run_tool
+from message_filter.clock import local_today
 
 SYSTEM_PROMPT = f"""You help a parent going through a high-conflict divorce read \
 messages from their ex-spouse without being exposed to hostile content.
@@ -56,7 +57,7 @@ async def filter_message(
     text: str, today: date | None = None, model: str = SONNET
 ) -> FilteredMessage:
     if today is None:
-        today = date.today()
+        today = local_today()
     content = f"Today is {format_today(today)}.\n\n<message>\n{text}\n</message>"
     return await ask_with_tools(
         model,

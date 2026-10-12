@@ -5,6 +5,8 @@ import logging
 import anthropic
 from pydantic import BaseModel
 
+from message_filter.clock import local_today
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,7 @@ client = anthropic.AsyncAnthropic()
 
 def format_today(today: date | None = None) -> str:
     if today is None:
-        today = date.today()
+        today = local_today()
     return today.strftime("%A, %B %d, %Y")
 
 
