@@ -72,3 +72,67 @@ Run it with:
 ```
 uv run --env-file .env python -m message_filter.evaluate sonnet
 ```
+
+## Design decisions
+
+### Reliability
+
+- **A queue sits between the webhook and the AI work.** Twilio expects an answer within 15 seconds, and the AI work takes up to 12. With a queue, the web app answers at once and a separate worker does the slow part. It also makes the system durable: a message that arrives while the worker is down waits on the queue and is processed when the worker returns.
+- **Duplicates are expected and handled.** SQS delivers every message at least once, which means occasionally twice. Before processing, the worker claims the message ID in Redis with an atomic set-if-absent that expires after 45 seconds. That's longer than the slowest job and shorter than the queue's 60-second retry window, so a crashed worker's claim clears itself before the retry. A finished message is marked done for 7 days, and it is marked done before its job is deleted from the queue, so a failure between the two steps can't cause reprocessing.
+- **Fail open where a mistake is cheap, fail closed where it isn't.** If Redis is unreachable, the worker processes the message anyway: a duplicate summary is a nuisance, a lost message is not. The security checks do the opposite: if their configuration is missing, they reject everything.
+- **Nothing is lost silently.** A job that fails three times moves to a dead-letter queue.
+- **The worker shuts down cleanly.** On SIGTERM it finishes the message it's working on and takes no new ones. The pod's grace period is 60 seconds, enough for a 20-second queue poll plus the slowest job.
+- **Dates use New York time, not the server's clock.** The server runs on UTC, which would make "today" wrong every evening after 8 p.m.
+
+### Security and privacy
+
+- **Only Twilio, and only you.** Every webhook request must carry a valid Twilio signature and come from the one allowed number.
+- **Message text never appears in logs.** The code logs message IDs only. Third-party libraries log at warning level only, since one of them logs request details at info level.
+- **The original is kept exactly as received.** It's archived to a versioned S3 bucket, and the app's permissions don't include deleting anything.
+- **Least privilege throughout.** The app may write and read objects in one bucket, and send, receive and delete on one queue. Nothing else.
+- **No stored AWS keys on the server.** The server gets temporary, automatically rotated credentials from an IAM role.
+- **No open inbound ports apart from SSH from one address.** Twilio reaches the app through an outbound ngrok tunnel, so the server accepts no incoming web traffic at all.
+- **Secrets never touch Git or the image.** They live in Kubernetes Secrets, created from local files. The Docker build copies only an explicit allow-list of files, so a `.env` can never be baked into an image.
+- **Real messages never enter the repository.** Every test and evaluation case uses invented messages.
+
+### Testing
+
+About 60 unit tests run on every push in GitHub Actions. They replace Claude, SQS, S3, Twilio and Redis with fakes, so they need no API keys and cost nothing. A separate set of tests calls the real models (test*_llm.py), and is run by hand when prompts change.
+
+## Running it
+
+You'll need Python 3.12, [uv](https://docs.astral.sh/uv/) and Docker. You'll also need accounts with Twilio (the WhatsApp sandbox is enough), Anthropic, AWS (one SQS queue with a dead-letter queue, and one S3 bucket) and ngrok.
+
+Copy `.env.example` to `.env` and fill in your own values. Then:
+
+```
+uv sync
+uv run pytest              # unit tests, no keys needed
+uv run pytest -m llm       # tests against the real models
+docker compose up --build  # web app, worker and Redis
+```
+
+Expose the web app with ngrok and set the Twilio sandbox's webhook to `https://<your-ngrok-domain>/whatsapp`.
+
+### Deploying to Kubernetes
+
+The manifests in `k8s/` run Redis, the web app, the worker and the ngrok agent. They expect three Secrets: `app-env` (the settings from `.env`), `ghcr-pull` (a read-only registry token) and `ngrok` (the ngrok authtoken). On AWS, the server's IAM role provides credentials, so no AWS keys are needed.
+
+```
+kubectl apply -f k8s/
+```
+
+Every push to `master` runs the tests and, if they pass, publishes a new image tagged with the commit ID. To deploy it:
+
+```
+kubectl rollout restart deployment/web deployment/worker
+```
+
+## Next steps
+
+- **Automatic deploys.** Designed but not built: GitHub Actions would authenticate to AWS with OIDC, so no keys are stored in GitHub, and trigger a fixed Systems Manager command on the server that accepts only a commit ID. It needs no inbound ports. It's blocked on this account because the AWS Free Plan doesn't offer OIDC identity providers.
+- **Metrics.** Prometheus and Grafana for time per message, failures, and Claude tokens and cost per message.
+- **Conversation memory.** Store recent summaries in Redis so the agents can see earlier messages. The filter could resolve references like "as I said yesterday" or "the usual time", and the reply agent could keep drafts consistent with what was already agreed. It would store the filtered facts, not the original hostile text, and expire them after a set period, to keep the privacy rules intact.
+- **A stronger evaluation.** At least 20 cases, and scoring whether the checker names the actual problem rather than any problem.
+- **Narrower permissions per component.** The web app doesn't need the Claude key or S3 access. Each component should get only its own secrets and its own IAM role.
+- **At larger scale.** Receive webhooks through an ingress with TLS on a real domain instead of a tunnel, use managed Redis, and run several workers. The duplicate handling already makes extra workers safe.
